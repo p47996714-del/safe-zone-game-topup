@@ -1,0 +1,9 @@
+{
+  "name": "Safe Zone Game Topup",
+  "short_name": "Safe Zone",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070b14",
+  "theme_color": "#67e8f9",
+  "description": "Safe Zone Game Topup — MLBB, PUBG, COC, Roblox and App Premium."
+}

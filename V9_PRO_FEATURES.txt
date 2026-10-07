@@ -1,0 +1,16 @@
+SAFE ZONE GAME TOPUP — V9 PRO
+================================
+Added:
+- Premium V9 hero / gaming UI layer
+- Rewards Center with points progress and claim UI
+- Order Tracker UI
+- Mobile responsive layout
+- Installable PWA manifest + service worker
+- Telegram/V8 backend remains included
+- Existing V7/V8 login, orders, promo, wallet and admin APIs remain in the project
+
+IMPORTANT:
+- This is an enhancement layer over the V8 project.
+- Real KPay/WavePay/UAB/AYA automatic payment verification still requires authorized merchant/API access.
+- Before public deployment, change ADMIN_PASSWORD and JWT_SECRET in .env.
+- Never publish .env or the ZIP containing secrets.

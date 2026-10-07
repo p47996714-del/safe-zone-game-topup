@@ -1,0 +1,45 @@
+SAFE ZONE GAME TOPUP V7
+
+WHAT CHANGED
+- Node.js + Express backend
+- SQLite database (safezone.db is created automatically)
+- bcrypt password hashing
+- JWT-based customer/admin sessions
+- Server-side orders
+- Server-side promo codes
+- Server-side wallet ledger endpoint for admin adjustments
+- Telegram notification hook (requires your own bot token + chat ID)
+- Games/packages/users/orders tables
+
+INSTALL
+1. Install Node.js 18+.
+2. Open this project folder in a terminal.
+3. Copy .env.example to .env and change JWT_SECRET and ADMIN_PASSWORD.
+4. Run:
+   npm install
+   npm start
+5. Open:
+   http://localhost:3000
+
+IMPORTANT
+The current frontend from V6 is retained. The backend API is ready, but the existing
+V6 frontend is still partly localStorage-driven. To make every button use the V7 API,
+the frontend needs a final API wiring pass.
+
+PAYMENTS
+KPay/WavePay/UAB/AYA are kept as manual payment methods. Do not claim automatic
+payment verification unless you have an authorized merchant/API integration and its
+current official documentation.
+
+TELEGRAM
+Set:
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+The server will send order/status notifications.
+
+PRODUCTION
+- Use HTTPS.
+- Set a strong random JWT_SECRET and admin password.
+- Put the database on persistent storage.
+- Add rate limiting, CSRF strategy where applicable, backups, audit logs and secure
+  deployment configuration before opening the admin publicly.

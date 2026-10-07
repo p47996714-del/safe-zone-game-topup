@@ -1,0 +1,26 @@
+TELEGRAM BOT SETUP — SAFE ZONE GAME TOPUP
+
+Bot:
+@SafeZoneGameTopup12_bot
+
+Admin Chat ID:
+8453100479
+
+IMPORTANT SECURITY:
+The bot token was exposed in chat. Do NOT put that old token into a public project.
+Regenerate/revoke it in BotFather and put the NEW token in .env:
+TELEGRAM_BOT_TOKEN=YOUR_NEW_TOKEN
+
+The project already has:
+- Telegram admin order notifications
+- Telegram status notifications
+- /start
+- /help
+- /status
+- Long-polling bot mode
+- Admin chat ID prefilled in .env.example
+
+The bot uses Telegram Bot API HTTPS calls and keeps the token server-side in .env.
+
+
+TOKEN STATUS: The provided token is included in the local .env file for this package as requested. Do not upload .env to GitHub or share the ZIP publicly.

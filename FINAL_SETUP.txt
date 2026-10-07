@@ -1,0 +1,47 @@
+SAFE ZONE GAME TOPUP — FINAL V7
+
+This is the final single project package.
+
+Included:
+- Customer register/login
+- Secure hashed passwords
+- SQLite server database
+- Server-side orders
+- Promo codes
+- Wallet ledger + admin adjustment
+- Admin login
+- Admin order status management
+- Admin customer list
+- Admin game/package/promo creation
+- Telegram notification hook
+- KPay / WavePay / UAB / AYA manual-payment workflow from the existing UI
+- Responsive Safe Zone frontend
+
+START:
+1. Install Node.js 24 LTS or newer. Node.js official download page currently lists v24.21.0 as LTS.
+2. Extract this ZIP.
+3. Copy .env.example to .env.
+4. Set JWT_SECRET to a long random value.
+5. Set ADMIN_PASSWORD to your own strong admin password.
+6. Optional: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+7. In the project folder run:
+   npm install
+   npm start
+8. Open http://localhost:3000
+9. Admin: http://localhost:3000/admin.html
+
+DEFAULT ADMIN USER:
+Username: admin
+Password: whatever you set in .env as ADMIN_PASSWORD
+
+IMPORTANT:
+- No real payment API is fabricated. KPay/WavePay/UAB/AYA remain manual unless you have an authorized merchant/API integration.
+- Before public production use, deploy behind HTTPS and add backups, rate limiting, audit logs and secure environment secrets.
+
+
+TELEGRAM:
+1. Regenerate the exposed bot token in BotFather.
+2. Put the new token into .env as TELEGRAM_BOT_TOKEN.
+3. Keep TELEGRAM_CHAT_ID=8453100479.
+4. Run npm install && npm start.
+The server will poll Telegram and send admin notifications for new orders/status changes.

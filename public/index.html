@@ -1,82 +1,113 @@
-<!doctype html><html lang="my"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Safe Zone Game Topup</title><link rel="stylesheet" href="style.css"><link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#67e8f9">
-</head><body>
-<header><div class="logo"><i>SZ</i> Safe Zone <b>Game Topup</b></div><nav><a href="#games">Games</a><a href="#orders">Orders</a><button onclick="wallet()">💰 Wallet</button><button onclick="account()">Account</button></nav></header>
-<section class="hero"><div><small>⚡ FAST • SAFE • EASY</small><h1>Top Up Your Game.<br><em>Play Without Limits.</em></h1><p>သင်ကြိုက်တဲ့ Gameကို လုံခြုံစိတ်ချစွာ Topupလုပ်ပါ။ KPay / WavePay ဖြင့် ငွေပေးချေနိုင်ပါတယ်။</p><button class="cta" onclick="location.href='#games'">Start Top Up →</button></div><div class="heroArt">🎮<strong>SAFE ZONE</strong><span>GAME TOPUP</span></div></section>
-<section id="games"><small>CHOOSE YOUR GAME</small><h2>Popular Games</h2><div id="gamesGrid" class="grid"></div></section>
-<section id="orders"><small>YOUR ORDERS</small><h2>My Orders</h2><div id="ordersList" class="orders"></div></section>
-<div id="modal" class="overlay hidden"><div class="modal"><button class="x" onclick="closeM()">×</button><div id="body"></div></div></div><footer>© 2026 Safe Zone Game Topup</footer><script src="app.js"></script>
-<!-- V6 Features -->
-<section class="section" id="v6-features">
-  <div class="section-head">
-    <div><span class="eyebrow">V6 FEATURES</span><h2>Wallet • Promo • Receipt</h2></div>
-    <p>ပိုမြန်ပြီး စနစ်တကျ Order လုပ်နိုင်အောင်</p>
-  </div>
-  <div class="feature-grid">
-    <div class="feature-card"><b>💰 Wallet</b><span>Balance ကိုကြည့်ပြီး Order history နဲ့တွဲစီမံနိုင်ပါတယ်။</span></div>
-    <div class="feature-card"><b>🎁 Promo Code</b><span>Discount code ထည့်ပြီး ရနိုင်တဲ့ discount ကို Order မတင်ခင်တွက်ပေးပါတယ်။</span></div>
-    <div class="feature-card"><b>🧾 Receipt</b><span>Order တင်ပြီးရင် Order ID နဲ့ Receipt ကိုကြည့်နိုင်ပါတယ်။</span></div>
-    <div class="feature-card"><b>🔔 Status</b><span>Pending / Processing / Completed / Rejected အခြေအနေကိုကြည့်နိုင်ပါတယ်။</span></div>
-  </div>
-</section>
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Safe Zone Game Topup</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-
-<section class="section" id="v7-live">
-  <div class="section-head">
-    <div><span class="eyebrow">SAFE ZONE V7</span><h2>Live Account & Orders</h2></div>
-    <p>Server database version</p>
+  <!-- ၁။ Animated Splash Screen (Logo အရှင်) -->
+  <div id="splash-screen" class="splash-container">
+    <div class="logo-box">
+      <div class="shield-icon">🛡️</div>
+      <h1 class="logo-title">SAFE ZONE</h1>
+      <p class="logo-sub">Game Topup</p>
+    </div>
   </div>
-  <div class="v7-grid">
-    <div class="v7-card">
-      <h3>Account</h3>
-      <input id="v7-user" placeholder="Username" autocomplete="username">
-      <input id="v7-pass" type="password" placeholder="Password (6+ chars)" autocomplete="current-password">
-      <div class="v7-actions">
-        <button id="v7-login">Login</button>
-        <button id="v7-register">Register</button>
-        <button id="v7-logout">Logout</button>
+
+  <!-- ၂။ Account / Login Screen (အကောင့်မဝင်ရသေးပါက ပေါ်မည်) -->
+  <div id="auth-screen" class="auth-container hidden">
+    
+    <!-- Login Form -->
+    <div id="login-box" class="card-auth">
+      <h2>🔐 Login</h2>
+      <p class="sub-text">Safe Zone Game Topup</p>
+      <input type="text" id="login-phone" placeholder="ဖုန်းနံပါတ်">
+      <input type="password" id="login-pass" placeholder="စကားဝှက်">
+      <button class="btn-primary" onclick="doLogin()">🔐 Login</button>
+      <p class="switch-text">အကောင့်မရှိသေးပါလား? <a href="#" onclick="showRegister()">Register လုပ်ပါ</a></p>
+    </div>
+
+    <!-- Register Form -->
+    <div id="register-box" class="card-auth hidden">
+      <h2>📁 Register</h2>
+      <p class="sub-text">အကောင့်သစ် ဖွင့်ရန်</p>
+      <input type="text" id="reg-name" placeholder="နာမည်">
+      <input type="text" id="reg-phone" placeholder="ဖုန်းနံပါတ်">
+      <input type="password" id="reg-pass" placeholder="စကားဝှက် (၄ လုံး+)">
+      <input type="password" id="reg-confirm" placeholder="စကားဝှက် ပြန်ရိုက်ပါ">
+      <div class="terms-check">
+        <input type="checkbox" id="terms"> <label for="terms">ကျွန်ုပ် Terms & Privacy ကို သဘောတူပါသည်</label>
       </div>
-      <div id="v7-account" class="v7-result">Not connected</div>
+      <button class="btn-primary" onclick="doRegister()">✨ Register</button>
+      <p class="switch-text">အကောင့်ရှိပြီးသားပါလား? <a href="#" onclick="showLogin()">Login ဝင်ပါ</a></p>
     </div>
-    <div class="v7-card">
-      <h3>Promo Check</h3>
-      <input id="v7-promo" placeholder="Promo code">
-      <button id="v7-check-promo">Check Promo</button>
-      <div id="v7-promo-result" class="v7-result"></div>
-    </div>
-    <div class="v7-card">
-      <h3>My Orders</h3>
-      <button id="v7-load-orders">Refresh Orders</button>
-      <div id="v7-orders" class="v7-result"></div>
+
+  </div>
+
+  <!-- ၃။ Main Web Dashboard (Login ဝင်ပြီးမှ ပေါ်မည့်နေရာ) -->
+  <div id="main-app" class="app-container hidden">
+    
+    <!-- User Profile & Wallet Header -->
+    <header class="app-header">
+      <div class="user-info">
+        <span id="user-display-name">Account User</span> • <span id="user-display-phone">09xxxxxxxxx</span>
+      </div>
+      <div class="wallet-card">
+        <small>လက်ကျန်ငွေ balance</small>
+        <h2><span id="wallet-balance">0</span> MMK</h2>
+        <button class="btn-topup" onclick="openTopupModal()">💳 ငွေဖြည့်ရန်</button>
+      </div>
+    </header>
+
+    <!-- Games Section -->
+    <main class="content-area">
+      <h3>🎮 ဂိမ်းများ</h3>
+      <div class="game-grid">
+        <div class="game-card" onclick="buyGame('Mobile Legends', 2500)">
+          <div class="game-img">⚔️</div>
+          <h4>Mobile Legends</h4>
+          <small>86 Diamonds - 2,500 MMK</small>
+        </div>
+        <div class="game-card" onclick="buyGame('PUBG Mobile', 2500)">
+          <div class="game-img">🔫</div>
+          <h4>PUBG Mobile</h4>
+          <small>60 UC - 2,500 MMK</small>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ၄။ ငွေဖြည့်ရန် Pop-up Modal -->
+  <div id="topup-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeTopupModal()">&times;</span>
+      <h3>🎂 ငွေဖြည့်ရန်</h3>
+      <label>ပမာဏ (Ks)</label>
+      <input type="number" id="topup-amount" value="5000">
+      
+      <div class="quick-amounts">
+        <button onclick="setAmount(1000)">1,000</button>
+        <button onclick="setAmount(5000)">5,000</button>
+        <button onclick="setAmount(10000)">10,000</button>
+        <button onclick="setAmount(50000)">50,000</button>
+      </div>
+
+      <label>နည်းလမ်း</label>
+      <div class="pay-methods">
+        <button class="pay-btn active">KPay</button>
+        <button class="pay-btn">Wave</button>
+        <button class="pay-btn">UAB</button>
+        <button class="pay-btn">AYA</button>
+      </div>
+
+      <button class="btn-primary" onclick="submitDeposit()">📥 ဖြည့်မည်</button>
     </div>
   </div>
-</section>
-<script>
-(function(){
- const $=id=>document.getElementById(id);
- function show(id,msg){$(id).textContent=msg}
- $("v7-login")?.addEventListener("click",async()=>{
-   try{const d=await SafeZoneV7.login($("v7-user").value,$("v7-pass").value);show("v7-account","Logged in as "+d.username);location.reload();}
-   catch(e){show("v7-account",e.message)}
- });
- $("v7-register")?.addEventListener("click",async()=>{
-   try{const d=await SafeZoneV7.register($("v7-user").value,$("v7-pass").value);show("v7-account","Registered as "+d.username);location.reload();}
-   catch(e){show("v7-account",e.message)}
- });
- $("v7-logout")?.addEventListener("click",()=>SafeZoneV7.logout());
- $("v7-check-promo")?.addEventListener("click",async()=>{
-   try{const p=await SafeZoneV7.promo($("v7-promo").value);show("v7-promo-result",p.code+" — "+(p.type==="percent"?p.value+"% off":p.value+" MMK off"))}
-   catch(e){show("v7-promo-result",e.message)}
- });
- $("v7-load-orders")?.addEventListener("click",async()=>{
-   try{
-     const rows=await SafeZoneV7.orders();
-     $("v7-orders").innerHTML=rows.length?rows.map(o=>"<div class='v7-order'><b>"+o.order_code+"</b> · "+o.game+" · "+o.total.toLocaleString()+" MMK · "+o.status+"</div>").join(""):"No orders yet";
-   }catch(e){show("v7-orders",e.message)}
- });
-})();
-</script>
 
-<script src="v9-pro-enhancement.js"></script>
-<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}</script>
-</body></html>
+  <script src="app.js"></script>
+</body>
+</html>

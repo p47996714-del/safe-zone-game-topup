@@ -1,5 +1,5 @@
 {
-  "name": "safe-zone-game-topup-website",
+  "name": "safe-zone-game-topup-v7",
   "version": "7.0.0",
   "private": true,
   "type": "module",
@@ -8,13 +8,13 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "better-sqlite3": "^12.4.1",
     "bcryptjs": "^3.0.2",
     "jsonwebtoken": "^9.0.2",
     "dotenv": "^17.2.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   }
 }

@@ -7,21 +7,37 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 
 const PORT = Number(process.env.PORT || 3000);
+
 const JWT_SECRET =
-  process.env.JWT_SECRET || "CHANGE_ME_IN_PRODUCTION";
+  process.env.JWT_SECRET || "CHANGE_THIS_SECRET";
 
 const ADMIN_USERNAME =
   process.env.ADMIN_USERNAME || "admin";
 
 const ADMIN_PASSWORD =
-  process.env.ADMIN_PASSWORD || "CHANGE_ME";
+  process.env.ADMIN_PASSWORD || "CHANGE_THIS_PASSWORD";
+
+const TELEGRAM_BOT_TOKEN =
+  process.env.TELEGRAM_BOT_TOKEN || "";
+
+const TELEGRAM_CHAT_ID =
+  process.env.TELEGRAM_CHAT_ID || "";
+
+/* =========================
+   DATABASE
+========================= */
 
 const dataDir = path.join(__dirname, "data");
-fs.mkdirSync(dataDir, { recursive: true });
+
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
 
 const db = new Database(
   path.join(dataDir, "safezone.db")
@@ -94,24 +110,39 @@ CREATE TABLE IF NOT EXISTS wallet_ledger (
 );
 `);
 
-if (
-  !db
-    .prepare(
-      "SELECT id FROM admins WHERE username=?"
-    )
-    .get(ADMIN_USERNAME)
-) {
+/* =========================
+   DEFAULT ADMIN
+========================= */
+
+const existingAdmin = db
+  .prepare(
+    "SELECT id FROM admins WHERE username = ?"
+  )
+  .get(ADMIN_USERNAME);
+
+if (!existingAdmin) {
+  const passwordHash = bcrypt.hashSync(
+    ADMIN_PASSWORD,
+    12
+  );
+
   db.prepare(
     "INSERT INTO admins(username,password_hash) VALUES(?,?)"
   ).run(
     ADMIN_USERNAME,
-    bcrypt.hashSync(ADMIN_PASSWORD, 12)
+    passwordHash
   );
 }
 
-if (
-  !db.prepare("SELECT id FROM games LIMIT 1").get()
-) {
+/* =========================
+   DEFAULT GAMES
+========================= */
+
+const existingGame = db
+  .prepare("SELECT id FROM games LIMIT 1")
+  .get();
+
+if (!existingGame) {
   const games = [
     "MLBB",
     "PUBG",
@@ -120,19 +151,34 @@ if (
     "App Premium"
   ];
 
-  const insert = db.prepare(
+  const insertGame = db.prepare(
     "INSERT INTO games(name) VALUES(?)"
   );
 
-  db.transaction(() => {
+  const transaction = db.transaction(() => {
     for (const game of games) {
-      insert.run(game);
+      insertGame.run(game);
     }
-  })();
+  });
+
+  transaction();
 }
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+/* =========================
+   MIDDLEWARE
+========================= */
+
+app.use(
+  express.json({
+    limit: "1mb"
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: true
+  })
+);
 
 app.use(
   express.static(
@@ -140,39 +186,55 @@ app.use(
   )
 );
 
+/* =========================
+   AUTH
+========================= */
+
 function auth(req, res, next) {
   const header =
     req.headers.authorization || "";
 
   if (!header.startsWith("Bearer ")) {
-    return res.status(401).json({
-      error: "Unauthorized"
-    });
+    return res
+      .status(401)
+      .json({
+        error: "Unauthorized"
+      });
   }
+
+  const token = header.slice(7);
 
   try {
     req.user = jwt.verify(
-      header.slice(7),
+      token,
       JWT_SECRET
     );
 
     next();
   } catch {
-    return res.status(401).json({
-      error: "Invalid token"
-    });
+    return res
+      .status(401)
+      .json({
+        error: "Invalid token"
+      });
   }
 }
 
 function adminOnly(req, res, next) {
   if (req.user?.role !== "admin") {
-    return res.status(403).json({
-      error: "Admin only"
-    });
+    return res
+      .status(403)
+      .json({
+        error: "Admin only"
+      });
   }
 
   next();
 }
+
+/* =========================
+   HELPERS
+========================= */
 
 function makeOrderCode() {
   return (
@@ -195,19 +257,17 @@ async function telegramCall(
   method,
   body
 ) {
-  const token =
-    process.env.TELEGRAM_BOT_TOKEN;
-
-  if (!token) {
+  if (!TELEGRAM_BOT_TOKEN) {
     console.log(
-      "Telegram token not configured."
+      "Telegram disabled: TELEGRAM_BOT_TOKEN is missing."
     );
+
     return null;
   }
 
   try {
     const response = await fetch(
-      `https://api.telegram.org/bot${token}/${method}`,
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`,
       {
         method: "POST",
         headers: {
@@ -221,6 +281,7 @@ async function telegramCall(
     return await response
       .json()
       .catch(() => null);
+
   } catch (error) {
     console.error(
       "Telegram API error:",
@@ -232,33 +293,22 @@ async function telegramCall(
 }
 
 async function notifyTelegram(message) {
-  const chatId =
-    process.env.TELEGRAM_CHAT_ID;
+  if (!TELEGRAM_CHAT_ID) {
+    console.log(
+      "Telegram notification skipped: TELEGRAM_CHAT_ID is missing."
+    );
 
-  if (!chatId) {
     return;
   }
 
   await telegramCall(
     "sendMessage",
     {
-      chat_id: chatId,
+      chat_id: TELEGRAM_CHAT_ID,
       text: message
     }
   );
 }
-
-/* =========================
-   HEALTH
-========================= */
-
-app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    service:
-      "Safe Zone Game Topup Website"
-  });
-});
 
 /* =========================
    ADMIN LOGIN
@@ -285,10 +335,12 @@ app.post(
         admin.password_hash
       )
     ) {
-      return res.status(401).json({
-        error:
-          "Invalid admin login"
-      });
+      return res
+        .status(401)
+        .json({
+          error:
+            "Invalid admin login"
+        });
     }
 
     const token = jwt.sign(
@@ -303,7 +355,9 @@ app.post(
       }
     );
 
-    res.json({ token });
+    res.json({
+      token
+    });
   }
 );
 
@@ -324,52 +378,54 @@ app.post(
       !password ||
       password.length < 6
     ) {
-      return res.status(400).json({
-        error:
-          "Username and password (6+ chars) required"
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Username and password (6+ chars) required"
+        });
     }
 
     try {
-      const hash =
+      const passwordHash =
         bcrypt.hashSync(
           password,
           12
         );
 
-      const result =
-        db
-          .prepare(
-            "INSERT INTO users(username,password_hash) VALUES(?,?)"
-          )
-          .run(
-            username,
-            hash
-          );
-
-      const token =
-        jwt.sign(
-          {
-            id:
-              result.lastInsertRowid,
-            username,
-            role: "user"
-          },
-          JWT_SECRET,
-          {
-            expiresIn: "7d"
-          }
+      const result = db
+        .prepare(
+          "INSERT INTO users(username,password_hash) VALUES(?,?)"
+        )
+        .run(
+          username,
+          passwordHash
         );
+
+      const token = jwt.sign(
+        {
+          id: result.lastInsertRowid,
+          username,
+          role: "user"
+        },
+        JWT_SECRET,
+        {
+          expiresIn: "7d"
+        }
+      );
 
       res.json({
         token,
         username
       });
+
     } catch {
-      res.status(409).json({
-        error:
-          "Username already exists"
-      });
+      res
+        .status(409)
+        .json({
+          error:
+            "Username already exists"
+        });
     }
   }
 );
@@ -386,12 +442,11 @@ app.post(
       password
     } = req.body || {};
 
-    const user =
-      db
-        .prepare(
-          "SELECT * FROM users WHERE username=?"
-        )
-        .get(username);
+    const user = db
+      .prepare(
+        "SELECT * FROM users WHERE username=?"
+      )
+      .get(username);
 
     if (
       !user ||
@@ -400,30 +455,29 @@ app.post(
         user.password_hash
       )
     ) {
-      return res.status(401).json({
-        error:
-          "Invalid login"
-      });
+      return res
+        .status(401)
+        .json({
+          error:
+            "Invalid login"
+        });
     }
 
-    const token =
-      jwt.sign(
-        {
-          id: user.id,
-          username:
-            user.username,
-          role: "user"
-        },
-        JWT_SECRET,
-        {
-          expiresIn: "7d"
-        }
-      );
+    const token = jwt.sign(
+      {
+        id: user.id,
+        username: user.username,
+        role: "user"
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "7d"
+      }
+    );
 
     res.json({
       token,
-      username:
-        user.username
+      username
     });
   }
 );
@@ -435,13 +489,13 @@ app.post(
 app.get(
   "/api/games",
   (req, res) => {
-    res.json(
-      db
-        .prepare(
-          "SELECT * FROM games WHERE active=1 ORDER BY id"
-        )
-        .all()
-    );
+    const games = db
+      .prepare(
+        "SELECT * FROM games WHERE active=1 ORDER BY id"
+      )
+      .all();
+
+    res.json(games);
   }
 );
 
@@ -452,24 +506,24 @@ app.get(
 app.get(
   "/api/packages",
   (req, res) => {
-    res.json(
-      db
-        .prepare(`
-          SELECT
-            p.id,
-            p.name,
-            p.price,
-            g.name game
-          FROM packages p
-          JOIN games g
-            ON g.id=p.game_id
-          WHERE
-            p.active=1
-            AND g.active=1
-          ORDER BY p.id
-        `)
-        .all()
-    );
+    const packages = db
+      .prepare(`
+        SELECT
+          p.id,
+          p.name,
+          p.price,
+          g.name AS game
+        FROM packages p
+        JOIN games g
+          ON g.id = p.game_id
+        WHERE
+          p.active=1
+          AND g.active=1
+        ORDER BY p.id
+      `)
+      .all();
+
+    res.json(packages);
   }
 );
 
@@ -482,8 +536,7 @@ app.get(
   auth,
   (req, res) => {
     if (
-      req.user.role ===
-      "admin"
+      req.user.role === "admin"
     ) {
       return res.json({
         username:
@@ -492,18 +545,24 @@ app.get(
       });
     }
 
-    const user =
-      db
-        .prepare(
-          "SELECT id,username,wallet_balance,created_at FROM users WHERE id=?"
-        )
-        .get(req.user.id);
+    const user = db
+      .prepare(`
+        SELECT
+          id,
+          username,
+          wallet_balance,
+          created_at
+        FROM users
+        WHERE id=?
+      `)
+      .get(req.user.id);
 
     if (!user) {
-      return res.status(404).json({
-        error:
-          "User not found"
-      });
+      return res
+        .status(404)
+        .json({
+          error: "User not found"
+        });
     }
 
     res.json({
@@ -521,9 +580,8 @@ app.get(
   "/api/orders",
   auth,
   (req, res) => {
-    const rows =
-      req.user.role ===
-      "admin"
+    const orders =
+      req.user.role === "admin"
         ? db
             .prepare(
               "SELECT * FROM orders ORDER BY id DESC"
@@ -533,41 +591,47 @@ app.get(
             .prepare(
               "SELECT * FROM orders WHERE user_id=? ORDER BY id DESC"
             )
-            .all(
-              req.user.id
-            );
+            .all(req.user.id);
 
-    res.json(rows);
+    res.json(orders);
   }
 );
 
 /* =========================
-   CHECK PROMO
+   PROMO CHECK
 ========================= */
 
 app.post(
   "/api/promos/check",
   (req, res) => {
-    const code =
-      String(
-        req.body?.code ||
-          ""
-      )
-        .trim()
-        .toUpperCase();
+    const code = String(
+      req.body?.code || ""
+    )
+      .trim()
+      .toUpperCase();
 
-    const promo =
-      db
-        .prepare(
-          "SELECT * FROM promos WHERE code=? AND active=1"
-        )
-        .get(code);
+    if (!code) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "Promo code required"
+        });
+    }
+
+    const promo = db
+      .prepare(
+        "SELECT * FROM promos WHERE code=? AND active=1"
+      )
+      .get(code);
 
     if (!promo) {
-      return res.status(404).json({
-        error:
-          "Promo code not found"
-      });
+      return res
+        .status(404)
+        .json({
+          error:
+            "Promo code not found"
+        });
     }
 
     res.json(promo);
@@ -583,13 +647,14 @@ app.post(
   auth,
   async (req, res) => {
     if (
-      req.user.role !==
-      "user"
+      req.user.role !== "user"
     ) {
-      return res.status(403).json({
-        error:
-          "Customer account required"
-      });
+      return res
+        .status(403)
+        .json({
+          error:
+            "Customer account required"
+        });
     }
 
     const {
@@ -602,8 +667,9 @@ app.post(
       subtotal
     } = req.body || {};
 
-    const base =
-      Number(subtotal);
+    const base = Number(
+      subtotal
+    );
 
     if (
       !game ||
@@ -613,46 +679,50 @@ app.post(
       !Number.isFinite(base) ||
       base <= 0
     ) {
-      return res.status(400).json({
-        error:
-          "Missing or invalid order data"
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Missing or invalid order data"
+        });
     }
 
     let discount = 0;
     let promo = null;
 
     if (promoCode) {
-      promo =
-        db
-          .prepare(
-            "SELECT * FROM promos WHERE code=? AND active=1"
-          )
-          .get(
-            String(
-              promoCode
-            ).toUpperCase()
-          );
+      promo = db
+        .prepare(
+          "SELECT * FROM promos WHERE code=? AND active=1"
+        )
+        .get(
+          String(
+            promoCode
+          ).toUpperCase()
+        );
 
       if (promo) {
-        discount =
+        if (
           promo.type ===
           "percent"
-            ? Math.floor(
-                (base *
-                  promo.value) /
-                  100
-              )
-            : promo.value;
-
-        discount =
-          Math.max(
-            0,
-            Math.min(
-              discount,
-              base
-            )
+        ) {
+          discount = Math.floor(
+            base *
+              promo.value /
+              100
           );
+        } else {
+          discount =
+            promo.value;
+        }
+
+        discount = Math.max(
+          0,
+          Math.min(
+            discount,
+            base
+          )
+        );
       }
     }
 
@@ -662,41 +732,40 @@ app.post(
     const orderCode =
       makeOrderCode();
 
-    const result =
-      db
-        .prepare(`
-          INSERT INTO orders(
-            order_code,
-            user_id,
-            game,
-            package,
-            player_id,
-            payment_method,
-            payment_reference,
-            promo_code,
-            subtotal,
-            discount,
-            total
-          )
-          VALUES(
-            ?,?,?,?,?,?,?,?,?,?,?
-          )
-        `)
-        .run(
-          orderCode,
-          req.user.id,
+    const result = db
+      .prepare(`
+        INSERT INTO orders(
+          order_code,
+          user_id,
           game,
-          packageName,
-          playerId,
-          paymentMethod,
-          paymentReference ||
-            null,
-          promo?.code ||
-            null,
-          base,
+          package,
+          player_id,
+          payment_method,
+          payment_reference,
+          promo_code,
+          subtotal,
           discount,
           total
-        );
+        )
+        VALUES(
+          ?,?,?,?,?,?,?,?,?,?,?
+        )
+      `)
+      .run(
+        orderCode,
+        req.user.id,
+        game,
+        packageName,
+        playerId,
+        paymentMethod,
+        paymentReference ||
+          null,
+        promo?.code ||
+          null,
+        base,
+        discount,
+        total
+      );
 
     await notifyTelegram(
 `🧾 Safe Zone Order
@@ -705,8 +774,10 @@ Order: ${orderCode}
 Game: ${game}
 Package: ${packageName}
 Player ID: ${playerId}
-Total: ${total} MMK
+
 Payment: ${paymentMethod}
+Total: ${total} MMK
+
 Status: Pending`
     );
 
@@ -746,44 +817,45 @@ app.post(
         status
       )
     ) {
-      return res.status(400).json({
-        error:
-          "Invalid status"
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Invalid status"
+        });
     }
 
-    const result =
-      db
-        .prepare(
-          "UPDATE orders SET status=? WHERE id=?"
-        )
-        .run(
-          status,
-          req.params.id
-        );
+    const result = db
+      .prepare(
+        "UPDATE orders SET status=? WHERE id=?"
+      )
+      .run(
+        status,
+        req.params.id
+      );
 
     if (!result.changes) {
-      return res.status(404).json({
-        error:
-          "Order not found"
-      });
+      return res
+        .status(404)
+        .json({
+          error:
+            "Order not found"
+        });
     }
 
-    const order =
-      db
-        .prepare(
-          "SELECT * FROM orders WHERE id=?"
-        )
-        .get(
-          req.params.id
-        );
+    const order = db
+      .prepare(
+        "SELECT * FROM orders WHERE id=?"
+      )
+      .get(req.params.id);
 
     await notifyTelegram(
-`🔔 Order Update
+`🔔 Safe Zone Order Update
 
 Order: ${order.order_code}
 Game: ${order.game}
 Package: ${order.package}
+
 Status: ${status}`
     );
 
@@ -802,16 +874,14 @@ app.post(
   auth,
   adminOnly,
   (req, res) => {
-    const amount =
-      Number(
-        req.body?.amount
-      );
+    const amount = Number(
+      req.body?.amount
+    );
 
-    const note =
-      String(
-        req.body?.note ||
-          "Admin adjustment"
-      );
+    const note = String(
+      req.body?.note ||
+        "Admin adjustment"
+    );
 
     if (
       !Number.isInteger(
@@ -819,46 +889,75 @@ app.post(
       ) ||
       amount === 0
     ) {
-      return res.status(400).json({
-        error:
-          "Integer amount required"
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Integer amount required"
+        });
     }
 
     const transaction =
-      db.transaction(
-        () => {
-          db.prepare(
-            "UPDATE users SET wallet_balance=wallet_balance+? WHERE id=?"
-          ).run(
-            amount,
+      db.transaction(() => {
+        const user = db
+          .prepare(
+            "SELECT id FROM users WHERE id=?"
+          )
+          .get(
             req.params.userId
           );
 
-          db.prepare(`
-            INSERT INTO wallet_ledger(
-              user_id,
-              amount,
-              type,
-              note
-            )
-            VALUES(?,?,?,?)
-          `).run(
-            req.params.userId,
-            amount,
-            amount > 0
-              ? "credit"
-              : "debit",
-            note
+        if (!user) {
+          throw new Error(
+            "USER_NOT_FOUND"
           );
         }
-      );
 
-    transaction();
+        db.prepare(
+          "UPDATE users SET wallet_balance=wallet_balance+? WHERE id=?"
+        ).run(
+          amount,
+          req.params.userId
+        );
 
-    res.json({
-      ok: true
-    });
+        db.prepare(
+          "INSERT INTO wallet_ledger(user_id,amount,type,note) VALUES(?,?,?,?)"
+        ).run(
+          req.params.userId,
+          amount,
+          amount > 0
+            ? "credit"
+            : "debit",
+          note
+        );
+      });
+
+    try {
+      transaction();
+
+      res.json({
+        ok: true
+      });
+    } catch (error) {
+      if (
+        error.message ===
+        "USER_NOT_FOUND"
+      ) {
+        return res
+          .status(404)
+          .json({
+            error:
+              "User not found"
+          });
+      }
+
+      res
+        .status(500)
+        .json({
+          error:
+            "Wallet update failed"
+        });
+    }
   }
 );
 
@@ -871,18 +970,24 @@ app.get(
   auth,
   adminOnly,
   (req, res) => {
-    res.json(
-      db
-        .prepare(
-          "SELECT id,username,wallet_balance,created_at FROM users ORDER BY id DESC"
-        )
-        .all()
-    );
+    const users = db
+      .prepare(`
+        SELECT
+          id,
+          username,
+          wallet_balance,
+          created_at
+        FROM users
+        ORDER BY id DESC
+      `)
+      .all();
+
+    res.json(users);
   }
 );
 
 /* =========================
-   ADMIN ADD GAME
+   ADMIN GAMES
 ========================= */
 
 app.post(
@@ -890,25 +995,24 @@ app.post(
   auth,
   adminOnly,
   (req, res) => {
-    const name =
-      String(
-        req.body?.name ||
-          ""
-      ).trim();
+    const name = String(
+      req.body?.name || ""
+    ).trim();
 
     if (!name) {
-      return res.status(400).json({
-        error:
-          "Game name required"
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Game name required"
+        });
     }
 
-    const result =
-      db
-        .prepare(
-          "INSERT INTO games(name) VALUES(?)"
-        )
-        .run(name);
+    const result = db
+      .prepare(
+        "INSERT INTO games(name) VALUES(?)"
+      )
+      .run(name);
 
     res.json({
       id:
@@ -919,7 +1023,7 @@ app.post(
 );
 
 /* =========================
-   ADMIN ADD PACKAGE
+   ADMIN PACKAGES
 ========================= */
 
 app.post(
@@ -933,29 +1037,53 @@ app.post(
       price
     } = req.body || {};
 
+    const numericPrice =
+      Number(price);
+
     if (
       !gameId ||
       !name ||
       !Number.isInteger(
-        Number(price)
+        numericPrice
       )
     ) {
-      return res.status(400).json({
-        error:
-          "Invalid package"
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Invalid package"
+        });
     }
 
-    const result =
-      db
-        .prepare(
-          "INSERT INTO packages(game_id,name,price) VALUES(?,?,?)"
-        )
-        .run(
-          gameId,
+    const game = db
+      .prepare(
+        "SELECT id FROM games WHERE id=?"
+      )
+      .get(gameId);
+
+    if (!game) {
+      return res
+        .status(404)
+        .json({
+          error:
+            "Game not found"
+        });
+    }
+
+    const result = db
+      .prepare(`
+        INSERT INTO packages(
+          game_id,
           name,
-          Number(price)
-        );
+          price
+        )
+        VALUES(?,?,?)
+      `)
+      .run(
+        gameId,
+        name,
+        numericPrice
+      );
 
     res.json({
       id:
@@ -965,7 +1093,7 @@ app.post(
 );
 
 /* =========================
-   ADMIN ADD PROMO
+   ADMIN PROMOS
 ========================= */
 
 app.post(
@@ -979,77 +1107,77 @@ app.post(
       value
     } = req.body || {};
 
+    const numericValue =
+      Number(value);
+
     if (
       !code ||
-      ![
-        "percent",
-        "fixed"
-      ].includes(type) ||
+      !["percent", "fixed"]
+        .includes(type) ||
       !Number.isInteger(
-        Number(value)
+        numericValue
       )
     ) {
-      return res.status(400).json({
-        error:
-          "Invalid promo"
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Invalid promo"
+        });
     }
 
     try {
-      const result =
-        db
-          .prepare(
-            "INSERT INTO promos(code,type,value) VALUES(?,?,?)"
-          )
-          .run(
-            String(
-              code
-            ).toUpperCase(),
+      const result = db
+        .prepare(`
+          INSERT INTO promos(
+            code,
             type,
-            Number(value)
-          );
+            value
+          )
+          VALUES(?,?,?)
+        `)
+        .run(
+          String(code)
+            .trim()
+            .toUpperCase(),
+          type,
+          numericValue
+        );
 
       res.json({
         id:
           result.lastInsertRowid
       });
+
     } catch {
-      res.status(409).json({
-        error:
-          "Promo already exists"
-      });
+      res
+        .status(409)
+        .json({
+          error:
+            "Promo already exists"
+        });
     }
   }
 );
 
 /* =========================
-   TELEGRAM BOT
+   TELEGRAM BOT POLLING
 ========================= */
 
 async function telegramBotLoop() {
-  const token =
-    process.env.TELEGRAM_BOT_TOKEN;
-
-  if (!token) {
+  if (!TELEGRAM_BOT_TOKEN) {
     console.log(
-      "Telegram bot disabled: TELEGRAM_BOT_TOKEN missing."
+      "Telegram bot disabled: TELEGRAM_BOT_TOKEN is missing."
     );
+
     return;
   }
-
-  await telegramCall(
-    "deleteWebhook",
-    {
-      drop_pending_updates:
-        false
-    }
-  );
-
-  let offset = 0;
 
   console.log(
     "Telegram bot polling enabled."
   );
+
+  let offset = 0;
 
   while (true) {
     try {
@@ -1065,38 +1193,17 @@ async function telegramBotLoop() {
           }
         );
 
-      if (!data?.ok) {
-        console.error(
-          "Telegram error:",
-          data?.description ||
-            "Unknown error"
-        );
-
-        await new Promise(
-          (resolve) =>
-            setTimeout(
-              resolve,
-              5000
-            )
-        );
-
-        continue;
-      }
-
       for (
-        const update
-        of data.result || []
+        const update of
+          data?.result || []
       ) {
         offset =
-          update.update_id +
-          1;
+          update.update_id + 1;
 
         const message =
           update.message;
 
-        if (
-          !message?.text
-        ) {
+        if (!message?.text) {
           continue;
         }
 
@@ -1122,15 +1229,15 @@ async function telegramBotLoop() {
 Welcome! 🎮
 
 Commands:
+
 /status - Check recent order
 /help - Show commands
 
-Website: Safe Zone Game Topup`
+Please use the Safe Zone website to place an order.`
             }
           );
-        }
 
-        else if (
+        } else if (
           text === "/help"
         ) {
           await telegramCall(
@@ -1147,49 +1254,8 @@ Website: Safe Zone Game Topup`
 For ordering, please use the Safe Zone Game Topup website.`
             }
           );
-        }
 
-        else if (
-          text === "/status"
-        ) {
-          const orders =
-            db
-              .prepare(`
-                SELECT
-                  order_code,
-                  game,
-                  package,
-                  total,
-                  status,
-                  created_at
-                FROM orders
-                ORDER BY id DESC
-                LIMIT 1
-              `)
-              .all();
-
-          const reply =
-            orders.length
-              ? `🧾 Latest Shop Order
-
-Order: ${orders[0].order_code}
-Game: ${orders[0].game}
-Package: ${orders[0].package}
-Total: ${orders[0].total} MMK
-Status: ${orders[0].status}`
-              : "No recent order found.";
-
-          await telegramCall(
-            "sendMessage",
-            {
-              chat_id:
-                chatId,
-              text: reply
-            }
-          );
-        }
-
-        else {
+        } else {
           await telegramCall(
             "sendMessage",
             {
@@ -1201,16 +1267,15 @@ Status: ${orders[0].status}`
           );
         }
       }
-    }
 
-    catch (error) {
+    } catch (error) {
       console.error(
         "Telegram polling error:",
         error.message
       );
 
       await new Promise(
-        (resolve) =>
+        resolve =>
           setTimeout(
             resolve,
             3000
@@ -1221,21 +1286,42 @@ Status: ${orders[0].status}`
 }
 
 /* =========================
-   WEBSITE ROUTE
+   HEALTH CHECK
 ========================= */
 
 app.get(
-  "*",
+  "/health",
+  (req, res) => {
+    res.json({
+      ok: true,
+      service:
+        "Safe Zone Game Topup",
+      telegram:
+        Boolean(
+          TELEGRAM_BOT_TOKEN
+        )
+    });
+  }
+);
+
+/* =========================
+   WEBSITE FALLBACK
+========================= */
+
+app.get(
+  "/*splat",
   (req, res) => {
     if (
       req.path.startsWith(
         "/api/"
       )
     ) {
-      return res.status(404).json({
-        error:
-          "Not found"
-      });
+      return res
+        .status(404)
+        .json({
+          error:
+            "Not found"
+        });
     }
 
     res.sendFile(
@@ -1249,38 +1335,40 @@ app.get(
 );
 
 /* =========================
-   ERROR HANDLER
-========================= */
-
-app.use(
-  (
-    error,
-    req,
-    res,
-    next
-  ) => {
-    console.error(
-      "Server error:",
-      error
-    );
-
-    res.status(500).json({
-      error:
-        "Internal server error"
-    });
-  }
-);
-
-/* =========================
-   START WEBSITE
+   START SERVER
 ========================= */
 
 app.listen(
   PORT,
+  "0.0.0.0",
   () => {
     console.log(
-      `Safe Zone Game Topup Website running on port ${PORT}`
+      `Safe Zone V7 running on port ${PORT}`
     );
+
+    if (
+      TELEGRAM_BOT_TOKEN
+    ) {
+      console.log(
+        "Telegram token loaded."
+      );
+    } else {
+      console.log(
+        "WARNING: TELEGRAM_BOT_TOKEN is missing."
+      );
+    }
+
+    if (
+      TELEGRAM_CHAT_ID
+    ) {
+      console.log(
+        "Telegram chat ID loaded."
+      );
+    } else {
+      console.log(
+        "WARNING: TELEGRAM_CHAT_ID is missing."
+      );
+    }
 
     telegramBotLoop();
   }

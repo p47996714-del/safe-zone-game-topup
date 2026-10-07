@@ -1,5 +1,3 @@
-// server.js
-
 import express from "express";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
@@ -11,6 +9,7 @@ dotenv.config();
 const app = express();
 
 const PORT = Number(process.env.PORT || 10000);
+
 const JWT_SECRET =
   process.env.JWT_SECRET || "CHANGE_THIS_SECRET_IN_RENDER";
 
@@ -72,6 +71,14 @@ CREATE TABLE IF NOT EXISTS payments (
   status TEXT NOT NULL DEFAULT 'pending',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS payment_credits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payment_id INTEGER UNIQUE NOT NULL,
+  user_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `);
 
 /* =========================
@@ -85,6 +92,7 @@ const adminExists = db
   .get(ADMIN_USERNAME);
 
 if (!adminExists) {
+
   const hash = bcrypt.hashSync(
     ADMIN_PASSWORD,
     10
@@ -92,11 +100,21 @@ if (!adminExists) {
 
   db.prepare(`
     INSERT INTO users
-    (username, password_hash, balance, is_admin)
+    (
+      username,
+      password_hash,
+      balance,
+      is_admin
+    )
     VALUES (?, ?, 0, 1)
   `).run(
     ADMIN_USERNAME,
     hash
+  );
+
+  console.log(
+    "Admin account created:",
+    ADMIN_USERNAME
   );
 }
 
@@ -113,6 +131,7 @@ const productCount = db
 if (!productCount) {
 
   const products = [
+
     ["Free Fire", "100 Diamonds", 3500],
     ["Free Fire", "310 Diamonds", 9500],
     ["Free Fire", "520 Diamonds", 15000],
@@ -127,20 +146,27 @@ if (!productCount) {
     ["Mobile Legends", "257 Diamonds", 12500],
 
     ["Clash of Clans", "Gold Pass", 18000],
+
     ["Roblox", "400 Robux", 15000],
     ["Roblox", "800 Robux", 29000]
   ];
 
   const insert = db.prepare(`
     INSERT INTO products
-    (game, name, price)
+    (
+      game,
+      name,
+      price
+    )
     VALUES (?, ?, ?)
   `);
 
   const tx = db.transaction(() => {
+
     for (const product of products) {
       insert.run(...product);
     }
+
   });
 
   tx();
@@ -158,6 +184,7 @@ function auth(req, res, next) {
       req.headers.authorization || "";
 
     if (!header.startsWith("Bearer ")) {
+
       return res.status(401).json({
         error: "Unauthorized"
       });
@@ -167,14 +194,18 @@ function auth(req, res, next) {
       header.substring(7);
 
     req.user =
-      jwt.verify(token, JWT_SECRET);
+      jwt.verify(
+        token,
+        JWT_SECRET
+      );
 
     next();
 
   } catch (error) {
 
     return res.status(401).json({
-      error: "Invalid or expired token"
+      error:
+        "Invalid or expired token"
     });
   }
 }
@@ -186,6 +217,7 @@ function auth(req, res, next) {
 function admin(req, res, next) {
 
   if (!req.user?.is_admin) {
+
     return res.status(403).json({
       error: "Admin only"
     });
@@ -209,7 +241,7 @@ async function telegram(message) {
   if (!token || !chatId) {
 
     console.log(
-      "Telegram disabled: BOT_TOKEN or CHAT_ID missing"
+      "Telegram disabled"
     );
 
     return false;
@@ -219,7 +251,9 @@ async function telegram(message) {
 
     const response =
       await fetch(
-        `https://api.telegram.org/bot${token}/sendMessage`,
+        "https://api.telegram.org/bot" +
+        token +
+        "/sendMessage",
         {
           method: "POST",
 
@@ -241,16 +275,12 @@ async function telegram(message) {
     if (!data.ok) {
 
       console.error(
-        "Telegram API error:",
+        "Telegram error:",
         data.description
       );
 
       return false;
     }
-
-    console.log(
-      "Telegram notification sent"
-    );
 
     return true;
 
@@ -266,18 +296,23 @@ async function telegram(message) {
 }
 
 /* =========================
-   HEALTH CHECK
+   HEALTH
 ========================= */
 
-app.get("/api/health", (req, res) => {
+app.get(
+  "/api/health",
+  (req, res) => {
 
-  res.json({
-    ok: true,
-    service: "Safe Zone Game Topup",
-    time: new Date().toISOString()
-  });
+    res.json({
+      ok: true,
+      service:
+        "Safe Zone Game Topup",
+      time:
+        new Date().toISOString()
+    });
 
-});
+  }
+);
 
 /* =========================
    REGISTER
@@ -289,22 +324,29 @@ app.post(
 
     try {
 
-      const {
-        username,
-        password
-      } = req.body || {};
+      const username =
+        String(
+          req.body?.username || ""
+        ).trim();
 
-      const cleanUsername =
-        String(username || "").trim();
+      const password =
+        String(
+          req.body?.password || ""
+        );
 
-      if (
-        !cleanUsername ||
-        !password
-      ) {
+      if (!username || !password) {
 
         return res.status(400).json({
           error:
             "Username and password required"
+        });
+      }
+
+      if (username.length < 3) {
+
+        return res.status(400).json({
+          error:
+            "Username must be at least 3 characters"
         });
       }
 
@@ -317,9 +359,11 @@ app.post(
       }
 
       const exists =
-        db.prepare(
-          "SELECT id FROM users WHERE username = ?"
-        ).get(cleanUsername);
+        db.prepare(`
+          SELECT id
+          FROM users
+          WHERE username = ?
+        `).get(username);
 
       if (exists) {
 
@@ -338,10 +382,13 @@ app.post(
       const result =
         db.prepare(`
           INSERT INTO users
-          (username, password_hash)
+          (
+            username,
+            password_hash
+          )
           VALUES (?, ?)
         `).run(
-          cleanUsername,
+          username,
           hash
         );
 
@@ -362,7 +409,9 @@ app.post(
         jwt.sign(
           user,
           JWT_SECRET,
-          { expiresIn: "7d" }
+          {
+            expiresIn: "7d"
+          }
         );
 
       res.json({
@@ -392,19 +441,22 @@ app.post(
 
     try {
 
-      const {
-        username,
-        password
-      } = req.body || {};
+      const username =
+        String(
+          req.body?.username || ""
+        ).trim();
+
+      const password =
+        String(
+          req.body?.password || ""
+        );
 
       const user =
         db.prepare(`
           SELECT *
           FROM users
           WHERE username = ?
-        `).get(
-          String(username || "").trim()
-        );
+        `).get(username);
 
       if (!user) {
 
@@ -416,7 +468,7 @@ app.post(
 
       const valid =
         await bcrypt.compare(
-          password || "",
+          password,
           user.password_hash
         );
 
@@ -429,17 +481,27 @@ app.post(
       }
 
       const safeUser = {
+
         id: user.id,
-        username: user.username,
-        balance: user.balance,
-        is_admin: user.is_admin
+
+        username:
+          user.username,
+
+        balance:
+          user.balance,
+
+        is_admin:
+          user.is_admin
+
       };
 
       const token =
         jwt.sign(
           safeUser,
           JWT_SECRET,
-          { expiresIn: "7d" }
+          {
+            expiresIn: "7d"
+          }
         );
 
       res.json({
@@ -483,7 +545,8 @@ app.get(
     if (!user) {
 
       return res.status(404).json({
-        error: "User not found"
+        error:
+          "User not found"
       });
     }
 
@@ -526,16 +589,30 @@ app.post(
 
     try {
 
-      const {
-        product_id,
-        player_id,
-        quantity = 1
-      } = req.body || {};
+      const productId =
+        Number(
+          req.body?.product_id
+        );
 
-      if (
-        !product_id ||
-        !player_id
-      ) {
+      const playerId =
+        String(
+          req.body?.player_id || ""
+        ).trim();
+
+      const qty =
+        Math.max(
+          1,
+          Math.min(
+            100,
+            Math.floor(
+              Number(
+                req.body?.quantity || 1
+              )
+            )
+          )
+        );
+
+      if (!productId || !playerId) {
 
         return res.status(400).json({
           error:
@@ -549,7 +626,7 @@ app.post(
           FROM products
           WHERE id = ?
           AND active = 1
-        `).get(product_id);
+        `).get(productId);
 
       if (!product) {
 
@@ -558,14 +635,6 @@ app.post(
             "Product not found"
         });
       }
-
-      const qty =
-        Math.max(
-          1,
-          Math.floor(
-            Number(quantity) || 1
-          )
-        );
 
       const total =
         product.price * qty;
@@ -596,14 +665,25 @@ app.post(
       const transaction =
         db.transaction(() => {
 
-          db.prepare(`
-            UPDATE users
-            SET balance = balance - ?
-            WHERE id = ?
-          `).run(
-            total,
-            user.id
-          );
+          const update =
+            db.prepare(`
+              UPDATE users
+              SET balance =
+                balance - ?
+              WHERE id = ?
+              AND balance >= ?
+            `).run(
+              total,
+              user.id,
+              total
+            );
+
+          if (update.changes !== 1) {
+
+            throw new Error(
+              "Insufficient balance"
+            );
+          }
 
           return db.prepare(`
             INSERT INTO orders
@@ -615,30 +695,39 @@ app.post(
               total,
               status
             )
-            VALUES (?, ?, ?, ?, ?, 'pending')
+            VALUES (
+              ?, ?, ?, ?, ?, 'pending'
+            )
           `).run(
             user.id,
             product.id,
-            String(player_id).trim(),
+            playerId,
             qty,
             total
           );
+
         });
 
       const result =
         transaction();
 
       await telegram(
-`🛒 NEW ORDER
-
-Order ID: #${result.lastInsertRowid}
-User: ${user.username}
-Game: ${product.game}
-Product: ${product.name}
-Player ID: ${player_id}
-Quantity: ${qty}
-Total: ${total.toLocaleString()} MMK
-Status: Pending`
+        "🛒 NEW ORDER\n\n" +
+        "Order ID: #" +
+        result.lastInsertRowid +
+        "\nUser: " +
+        user.username +
+        "\nGame: " +
+        product.game +
+        "\nProduct: " +
+        product.name +
+        "\nPlayer ID: " +
+        playerId +
+        "\nQuantity: " +
+        qty +
+        "\nTotal: " +
+        total.toLocaleString() +
+        " MMK\nStatus: Pending"
       );
 
       res.json({
@@ -654,7 +743,10 @@ Status: Pending`
 
       res.status(500).json({
         error:
-          "Could not create order"
+          error.message ===
+          "Insufficient balance"
+            ? "Insufficient balance"
+            : "Could not create order"
       });
     }
   }
@@ -692,7 +784,7 @@ app.get(
 );
 
 /* =========================
-   PAYMENT
+   PAYMENT SUBMIT
 ========================= */
 
 app.post(
@@ -702,20 +794,24 @@ app.post(
 
     try {
 
-      const {
-        amount,
-        method,
-        transaction_id
-      } = req.body || {};
+      const amount =
+        Number(
+          req.body?.amount
+        );
 
-      const paymentAmount =
-        Number(amount);
+      const method =
+        String(
+          req.body?.method || ""
+        ).trim();
+
+      const transactionId =
+        String(
+          req.body?.transaction_id || ""
+        ).trim();
 
       if (
-        !Number.isFinite(
-          paymentAmount
-        ) ||
-        paymentAmount <= 0 ||
+        !Number.isFinite(amount) ||
+        amount <= 0 ||
         !method
       ) {
 
@@ -735,30 +831,36 @@ app.post(
             transaction_id,
             status
           )
-          VALUES (?, ?, ?, ?, 'pending')
+          VALUES (
+            ?, ?, ?, ?, 'pending'
+          )
         `).run(
           req.user.id,
-          paymentAmount,
-          String(method),
-          String(
-            transaction_id || ""
-          ).trim()
+          amount,
+          method,
+          transactionId
         );
 
       const user =
-        db.prepare(
-          "SELECT username FROM users WHERE id = ?"
-        ).get(req.user.id);
+        db.prepare(`
+          SELECT username
+          FROM users
+          WHERE id = ?
+        `).get(req.user.id);
 
       await telegram(
-`💰 NEW PAYMENT
-
-Payment ID: #${result.lastInsertRowid}
-User: ${user.username}
-Amount: ${paymentAmount.toLocaleString()} MMK
-Method: ${method}
-Transaction ID: ${transaction_id || "-"}
-Status: Pending`
+        "💰 NEW PAYMENT\n\n" +
+        "Payment ID: #" +
+        result.lastInsertRowid +
+        "\nUser: " +
+        user.username +
+        "\nAmount: " +
+        amount.toLocaleString() +
+        " MMK\nMethod: " +
+        method +
+        "\nTransaction ID: " +
+        (transactionId || "-") +
+        "\nStatus: Pending"
       );
 
       res.json({
@@ -776,6 +878,90 @@ Status: Pending`
           "Payment submission failed"
       });
     }
+  }
+);
+
+/* =========================
+   ADMIN STATS
+========================= */
+
+app.get(
+  "/api/admin/stats",
+  auth,
+  admin,
+  (req, res) => {
+
+    const users =
+      db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM users
+        WHERE is_admin = 0
+      `).get().count;
+
+    const orders =
+      db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM orders
+      `).get().count;
+
+    const pendingOrders =
+      db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM orders
+        WHERE status = 'pending'
+      `).get().count;
+
+    const pendingPayments =
+      db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM payments
+        WHERE status = 'pending'
+      `).get().count;
+
+    const approvedPayments =
+      db.prepare(`
+        SELECT
+          COALESCE(
+            SUM(amount),
+            0
+          ) AS total
+        FROM payments
+        WHERE status = 'approved'
+      `).get().total;
+
+    res.json({
+      users,
+      orders,
+      pendingOrders,
+      pendingPayments,
+      approvedPayments
+    });
+  }
+);
+
+/* =========================
+   ADMIN USERS
+========================= */
+
+app.get(
+  "/api/admin/users",
+  auth,
+  admin,
+  (req, res) => {
+
+    const users =
+      db.prepare(`
+        SELECT
+          id,
+          username,
+          balance,
+          is_admin,
+          created_at
+        FROM users
+        ORDER BY id DESC
+      `).all();
+
+    res.json(users);
   }
 );
 
@@ -820,9 +1006,10 @@ app.patch(
 
     try {
 
-      const {
-        status
-      } = req.body || {};
+      const status =
+        String(
+          req.body?.status || ""
+        );
 
       const allowed = [
         "pending",
@@ -849,7 +1036,7 @@ app.patch(
             ON u.id = o.user_id
           WHERE o.id = ?
         `).get(
-          req.params.id
+          Number(req.params.id)
         );
 
       if (!order) {
@@ -860,21 +1047,34 @@ app.patch(
         });
       }
 
+      if (
+        order.status === "completed" &&
+        status !== "completed"
+      ) {
+
+        return res.status(400).json({
+          error:
+            "Completed order cannot be changed"
+        });
+      }
+
       db.prepare(`
         UPDATE orders
         SET status = ?
         WHERE id = ?
       `).run(
         status,
-        req.params.id
+        order.id
       );
 
       await telegram(
-`📦 ORDER UPDATE
-
-Order: #${order.id}
-User: ${order.username}
-Status: ${status}`
+        "📦 ORDER UPDATE\n\n" +
+        "Order: #" +
+        order.id +
+        "\nUser: " +
+        order.username +
+        "\nStatus: " +
+        status
       );
 
       res.json({
@@ -930,9 +1130,10 @@ app.patch(
 
     try {
 
-      const {
-        status
-      } = req.body || {};
+      const status =
+        String(
+          req.body?.status || ""
+        );
 
       const allowed = [
         "pending",
@@ -954,7 +1155,7 @@ app.patch(
           FROM payments
           WHERE id = ?
         `).get(
-          req.params.id
+          Number(req.params.id)
         );
 
       if (!payment) {
@@ -962,6 +1163,17 @@ app.patch(
         return res.status(404).json({
           error:
             "Payment not found"
+        });
+      }
+
+      if (
+        payment.status === "approved" &&
+        status !== "approved"
+      ) {
+
+        return res.status(400).json({
+          error:
+            "Approved payment cannot be changed"
         });
       }
 
@@ -982,31 +1194,60 @@ app.patch(
             payment.status !== "approved"
           ) {
 
-            db.prepare(`
-              UPDATE users
-              SET balance = balance + ?
-              WHERE id = ?
-            `).run(
-              payment.amount,
-              payment.user_id
-            );
+            const credit =
+              db.prepare(`
+                INSERT OR IGNORE INTO payment_credits
+                (
+                  payment_id,
+                  user_id,
+                  amount
+                )
+                VALUES (?, ?, ?)
+              `).run(
+                payment.id,
+                payment.user_id,
+                payment.amount
+              );
+
+            if (credit.changes === 1) {
+
+              db.prepare(`
+                UPDATE users
+                SET balance =
+                  balance + ?
+                WHERE id = ?
+              `).run(
+                payment.amount,
+                payment.user_id
+              );
+
+            }
+
           }
+
         });
 
       transaction();
 
       const user =
-        db.prepare(
-          "SELECT username FROM users WHERE id = ?"
-        ).get(payment.user_id);
+        db.prepare(`
+          SELECT username
+          FROM users
+          WHERE id = ?
+        `).get(
+          payment.user_id
+        );
 
       await telegram(
-`💳 PAYMENT UPDATE
-
-Payment: #${payment.id}
-User: ${user?.username || "-"}
-Amount: ${payment.amount.toLocaleString()} MMK
-Status: ${status}`
+        "💳 PAYMENT UPDATE\n\n" +
+        "Payment: #" +
+        payment.id +
+        "\nUser: " +
+        (user?.username || "-") +
+        "\nAmount: " +
+        payment.amount.toLocaleString() +
+        " MMK\nStatus: " +
+        status
       );
 
       res.json({
@@ -1026,38 +1267,13 @@ Status: ${status}`
 );
 
 /* =========================
-   ADMIN USERS
-========================= */
-
-app.get(
-  "/api/admin/users",
-  auth,
-  admin,
-  (req, res) => {
-
-    const users =
-      db.prepare(`
-        SELECT
-          id,
-          username,
-          balance,
-          is_admin,
-          created_at
-        FROM users
-        ORDER BY id DESC
-      `).all();
-
-    res.json(users);
-  }
-);
-
-/* =========================
    WEBSITE
 ========================= */
 
-app.use((req, res) => {
+app.use(
+  (req, res) => {
 
-  res.send(`<!DOCTYPE html>
+    res.send(`<!DOCTYPE html>
 
 <html lang="en">
 
@@ -1081,9 +1297,7 @@ app.use((req, res) => {
 }
 
 body{
-  font-family:
-    Arial,
-    sans-serif;
+  font-family:Arial,sans-serif;
   background:#08090d;
   color:#fff;
 }
@@ -1093,13 +1307,12 @@ header{
   top:0;
   z-index:10;
   background:#10121a;
-  border-bottom:
-    1px solid #252936;
+  border-bottom:1px solid #252936;
   padding:15px;
 }
 
 .container{
-  max-width:1100px;
+  max-width:1200px;
   margin:auto;
   padding:20px;
 }
@@ -1110,14 +1323,12 @@ header{
 }
 
 .hero{
-  background:
-    linear-gradient(
-      135deg,
-      #151a31,
-      #101018
-    );
-  border:
-    1px solid #282d42;
+  background:linear-gradient(
+    135deg,
+    #171d39,
+    #101018
+  );
+  border:1px solid #282d42;
   border-radius:20px;
   padding:30px;
   margin-bottom:20px;
@@ -1134,35 +1345,10 @@ header{
 
 .card{
   background:#11131b;
-  border:
-    1px solid #252936;
+  border:1px solid #252936;
   border-radius:16px;
   padding:18px;
   margin-bottom:15px;
-}
-
-input,
-select,
-button{
-  width:100%;
-  padding:13px;
-  margin-top:9px;
-  border-radius:10px;
-  border:
-    1px solid #303443;
-  background:#191c26;
-  color:#fff;
-}
-
-button{
-  background:#6d4aff;
-  border:0;
-  font-weight:bold;
-  cursor:pointer;
-}
-
-button:hover{
-  opacity:.9;
 }
 
 .grid{
@@ -1185,15 +1371,27 @@ button:hover{
   border-color:#6d4aff;
 }
 
-.price{
-  color:#8f7aff;
-  font-size:20px;
-  font-weight:bold;
-  margin-top:12px;
+input,
+select,
+button{
+  width:100%;
+  padding:13px;
+  margin-top:9px;
+  border-radius:10px;
+  border:1px solid #303443;
+  background:#191c26;
+  color:#fff;
 }
 
-.hidden{
-  display:none;
+button{
+  background:#6d4aff;
+  border:0;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+button:hover{
+  opacity:.9;
 }
 
 .nav{
@@ -1208,17 +1406,20 @@ button:hover{
   padding:10px 16px;
 }
 
-.badge{
-  display:inline-block;
-  padding:5px 9px;
-  border-radius:8px;
-  background:#242938;
-  font-size:12px;
-}
-
 .balance{
   font-size:24px;
   font-weight:bold;
+}
+
+.price{
+  color:#927dff;
+  font-size:20px;
+  font-weight:bold;
+  margin-top:12px;
+}
+
+.hidden{
+  display:none !important;
 }
 
 .error{
@@ -1231,18 +1432,81 @@ button:hover{
   margin-top:10px;
 }
 
+.badge{
+  display:inline-block;
+  padding:5px 9px;
+  border-radius:8px;
+  background:#242938;
+  font-size:12px;
+}
+
+.admin-title{
+  font-size:28px;
+  margin-bottom:15px;
+}
+
+.stat-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(170px,1fr)
+    );
+  gap:12px;
+  margin-bottom:20px;
+}
+
+.stat{
+  background:#171a24;
+  border:1px solid #292e3c;
+  border-radius:14px;
+  padding:18px;
+}
+
+.stat small{
+  color:#aeb3c5;
+}
+
+.stat strong{
+  display:block;
+  font-size:26px;
+  margin-top:8px;
+}
+
+.table-wrap{
+  overflow-x:auto;
+}
+
 table{
   width:100%;
   border-collapse:collapse;
+  min-width:750px;
 }
 
 th,
 td{
   padding:10px;
-  border-bottom:
-    1px solid #282c39;
+  border-bottom:1px solid #282c39;
   text-align:left;
   font-size:13px;
+}
+
+.small-btn{
+  width:auto;
+  padding:7px 10px;
+  margin:2px;
+}
+
+.green{
+  background:#16834b;
+}
+
+.red{
+  background:#a82b38;
+}
+
+.orange{
+  background:#a16a13;
 }
 
 @media(max-width:600px){
@@ -1356,6 +1620,14 @@ ORDERS
 BALANCE
 </button>
 
+<button
+  id="adminNav"
+  class="hidden"
+  onclick="showAdmin()"
+>
+ADMIN PANEL
+</button>
+
 <button onclick="logout()">
 LOGOUT
 </button>
@@ -1365,7 +1637,7 @@ LOGOUT
 <div class="hero">
 
 <h1>
-Game Topup
+Safe Zone Game Topup
 </h1>
 
 <p>
@@ -1375,15 +1647,11 @@ Fast and secure game topup service.
 <br>
 
 <div class="balance">
-
 Balance:
-
 <span id="balance">
 0
 </span>
-
 MMK
-
 </div>
 
 </div>
@@ -1491,6 +1759,161 @@ SUBMIT PAYMENT
 
 </section>
 
+<section
+  id="adminSection"
+  class="hidden"
+>
+
+<h2 class="admin-title">
+🛡️ Admin Panel
+</h2>
+
+<div class="stat-grid">
+
+<div class="stat">
+<small>Total Users</small>
+<strong id="statUsers">0</strong>
+</div>
+
+<div class="stat">
+<small>Total Orders</small>
+<strong id="statOrders">0</strong>
+</div>
+
+<div class="stat">
+<small>Pending Orders</small>
+<strong id="statPendingOrders">0</strong>
+</div>
+
+<div class="stat">
+<small>Pending Payments</small>
+<strong id="statPendingPayments">0</strong>
+</div>
+
+<div class="stat">
+<small>Approved Top-up</small>
+<strong id="statApproved">0 MMK</strong>
+</div>
+
+</div>
+
+<div class="card">
+
+<button onclick="loadAdmin()">
+🔄 REFRESH ADMIN DATA
+</button>
+
+</div>
+
+<div class="card">
+
+<h3>
+👥 Users
+</h3>
+
+<br>
+
+<div class="table-wrap">
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ID</th>
+<th>Username</th>
+<th>Balance</th>
+<th>Admin</th>
+<th>Created</th>
+
+</tr>
+
+</thead>
+
+<tbody id="adminUsers"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+<div class="card">
+
+<h3>
+💳 Payment Requests
+</h3>
+
+<br>
+
+<div class="table-wrap">
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ID</th>
+<th>User</th>
+<th>Amount</th>
+<th>Method</th>
+<th>Transaction</th>
+<th>Status</th>
+<th>Action</th>
+
+</tr>
+
+</thead>
+
+<tbody id="adminPayments"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+<div class="card">
+
+<h3>
+🛒 Orders
+</h3>
+
+<br>
+
+<div class="table-wrap">
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ID</th>
+<th>User</th>
+<th>Game</th>
+<th>Product</th>
+<th>Player ID</th>
+<th>Total</th>
+<th>Status</th>
+<th>Action</th>
+
+</tr>
+
+</thead>
+
+<tbody id="adminOrders"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</section>
+
 </section>
 
 </main>
@@ -1504,8 +1927,20 @@ let products = [];
 
 let selectedProduct = null;
 
+let currentUser = null;
+
 function $(id){
   return document.getElementById(id);
+}
+
+function escapeHtml(value){
+
+  return String(value)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
 }
 
 function showRegister(){
@@ -1533,33 +1968,22 @@ function showLogin(){
 async function register(){
 
   const username =
-    $("regUser").value.trim();
+    $("regUser")
+      .value
+      .trim();
 
   const password =
     $("regPass").value;
-
-  if(!username || !password){
-
-    $("regMsg").className =
-      "error";
-
-    $("regMsg").textContent =
-      "Username နှင့် Password ထည့်ပါ";
-
-    return;
-  }
 
   const response =
     await fetch(
       "/api/register",
       {
         method:"POST",
-
         headers:{
           "Content-Type":
             "application/json"
         },
-
         body:JSON.stringify({
           username,
           password
@@ -1601,20 +2025,17 @@ async function login(){
       .trim();
 
   const password =
-    $("loginPass")
-      .value;
+    $("loginPass").value;
 
   const response =
     await fetch(
       "/api/login",
       {
         method:"POST",
-
         headers:{
           "Content-Type":
             "application/json"
         },
-
         body:JSON.stringify({
           username,
           password
@@ -1662,9 +2083,16 @@ async function startApp(){
     .classList
     .remove("hidden");
 
-  await loadMe();
+  const ok =
+    await loadMe();
+
+  if(!ok){
+    return;
+  }
 
   await loadProducts();
+
+  showHome();
 }
 
 async function loadMe(){
@@ -1684,17 +2112,37 @@ async function loadMe(){
 
     logout();
 
-    return;
+    return false;
   }
 
-  const user =
+  currentUser =
     await response.json();
 
   $("balance")
     .textContent =
     Number(
-      user.balance
+      currentUser.balance
     ).toLocaleString();
+
+  if(
+    Number(
+      currentUser.is_admin
+    ) === 1
+  ){
+
+    $("adminNav")
+      .classList
+      .remove("hidden");
+
+  }else{
+
+    $("adminNav")
+      .classList
+      .add("hidden");
+
+  }
+
+  return true;
 }
 
 async function loadProducts(){
@@ -1719,7 +2167,7 @@ async function loadProducts(){
     "";
 
   products.forEach(
-    product => {
+    function(product){
 
       const div =
         document.createElement(
@@ -1749,7 +2197,7 @@ async function loadProducts(){
         " MMK</div>";
 
       div.onclick =
-        () => {
+        function(){
 
           selectedProduct =
             product;
@@ -1772,6 +2220,7 @@ async function loadProducts(){
 
       $("products")
         .appendChild(div);
+
     }
   );
 }
@@ -1861,13 +2310,7 @@ async function buyProduct(){
 
 async function showOrders(){
 
-  $("homeSection")
-    .classList
-    .add("hidden");
-
-  $("paymentSection")
-    .classList
-    .add("hidden");
+  hideAllSections();
 
   $("ordersSection")
     .classList
@@ -1903,60 +2346,57 @@ async function showOrders(){
     return;
   }
 
+  let html = "";
+
+  orders.forEach(
+    function(order){
+
+      html +=
+        "<div class='card'>" +
+
+        "<b>#"+
+        order.id+
+        "</b><br>" +
+
+        escapeHtml(
+          order.game
+        ) +
+        " - " +
+        escapeHtml(
+          order.name
+        ) +
+
+        "<br>Player ID: " +
+        escapeHtml(
+          order.player_id
+        ) +
+
+        "<br>Total: " +
+        Number(
+          order.total
+        ).toLocaleString() +
+        " MMK" +
+
+        "<br>Status: " +
+
+        "<span class='badge'>" +
+        escapeHtml(
+          order.status
+        ) +
+        "</span>" +
+
+        "</div>";
+
+    }
+  );
+
   $("orders").innerHTML =
-    orders.map(
-      order => `
-
-<div class="card">
-
-<b>
-#${order.id}
-</b>
-
-<br>
-
-${escapeHtml(order.game)}
--
-${escapeHtml(order.name)}
-
-<br>
-
-Player ID:
-${escapeHtml(order.player_id)}
-
-<br>
-
-Total:
-${Number(
-  order.total
-).toLocaleString()}
-MMK
-
-<br>
-
-Status:
-
-<span class="badge">
-${escapeHtml(
-  order.status
-)}
-</span>
-
-</div>
-
-`
-    ).join("");
+    html;
 }
 
 function showHome(){
 
-  $("ordersSection")
-    .classList
-    .add("hidden");
-
-  $("paymentSection")
-    .classList
-    .add("hidden");
+  hideAllSections();
 
   $("homeSection")
     .classList
@@ -1965,6 +2405,15 @@ function showHome(){
 
 function showPayment(){
 
+  hideAllSections();
+
+  $("paymentSection")
+    .classList
+    .remove("hidden");
+}
+
+function hideAllSections(){
+
   $("homeSection")
     .classList
     .add("hidden");
@@ -1975,7 +2424,11 @@ function showPayment(){
 
   $("paymentSection")
     .classList
-    .remove("hidden");
+    .add("hidden");
+
+  $("adminSection")
+    .classList
+    .add("hidden");
 }
 
 async function payment(){
@@ -1988,13 +2441,13 @@ async function payment(){
   const method =
     $("payMethod").value;
 
-  const transaction_id =
+  const transactionId =
     $("transactionId")
       .value
       .trim();
 
   if(
-    !amount ||
+    !Number.isFinite(amount) ||
     amount <= 0
   ){
 
@@ -2024,7 +2477,8 @@ async function payment(){
         body:JSON.stringify({
           amount,
           method,
-          transaction_id
+          transaction_id:
+            transactionId
         })
       }
     );
@@ -2057,6 +2511,511 @@ async function payment(){
     "";
 }
 
+/* =========================
+   ADMIN PANEL
+========================= */
+
+async function showAdmin(){
+
+  if(
+    !currentUser ||
+    Number(
+      currentUser.is_admin
+    ) !== 1
+  ){
+
+    alert(
+      "Admin access required"
+    );
+
+    return;
+  }
+
+  hideAllSections();
+
+  $("adminSection")
+    .classList
+    .remove("hidden");
+
+  await loadAdmin();
+}
+
+async function adminFetch(url){
+
+  const response =
+    await fetch(
+      url,
+      {
+        headers:{
+          Authorization:
+            "Bearer " + token
+        }
+      }
+    );
+
+  if(
+    response.status === 401 ||
+    response.status === 403
+  ){
+
+    alert(
+      "Admin session expired"
+    );
+
+    logout();
+
+    return null;
+  }
+
+  return response;
+}
+
+async function loadAdmin(){
+
+  const statsResponse =
+    await adminFetch(
+      "/api/admin/stats"
+    );
+
+  if(!statsResponse)
+    return;
+
+  const stats =
+    await statsResponse.json();
+
+  $("statUsers")
+    .textContent =
+    Number(
+      stats.users
+    ).toLocaleString();
+
+  $("statOrders")
+    .textContent =
+    Number(
+      stats.orders
+    ).toLocaleString();
+
+  $("statPendingOrders")
+    .textContent =
+    Number(
+      stats.pendingOrders
+    ).toLocaleString();
+
+  $("statPendingPayments")
+    .textContent =
+    Number(
+      stats.pendingPayments
+    ).toLocaleString();
+
+  $("statApproved")
+    .textContent =
+    Number(
+      stats.approvedPayments
+    ).toLocaleString() +
+    " MMK";
+
+  await loadAdminUsers();
+
+  await loadAdminPayments();
+
+  await loadAdminOrders();
+}
+
+async function loadAdminUsers(){
+
+  const response =
+    await adminFetch(
+      "/api/admin/users"
+    );
+
+  if(!response)
+    return;
+
+  const users =
+    await response.json();
+
+  let html = "";
+
+  users.forEach(
+    function(user){
+
+      html +=
+        "<tr>" +
+
+        "<td>" +
+        user.id +
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          user.username
+        ) +
+        "</td>" +
+
+        "<td>" +
+        Number(
+          user.balance
+        ).toLocaleString() +
+        " MMK</td>" +
+
+        "<td>" +
+        (
+          Number(
+            user.is_admin
+          ) === 1
+            ? "YES"
+            : "NO"
+        ) +
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          user.created_at
+        ) +
+        "</td>" +
+
+        "</tr>";
+
+    }
+  );
+
+  $("adminUsers").innerHTML =
+    html ||
+    "<tr><td colspan='5'>No users</td></tr>";
+}
+
+async function loadAdminPayments(){
+
+  const response =
+    await adminFetch(
+      "/api/admin/payments"
+    );
+
+  if(!response)
+    return;
+
+  const payments =
+    await response.json();
+
+  let html = "";
+
+  payments.forEach(
+    function(payment){
+
+      let action = "";
+
+      if(
+        payment.status ===
+        "pending"
+      ){
+
+        action =
+          "<button class='small-btn green' " +
+          "onclick='updatePayment(" +
+          payment.id +
+          ", \"approved\")'>" +
+          "APPROVE" +
+          "</button>" +
+
+          "<button class='small-btn red' " +
+          "onclick='updatePayment(" +
+          payment.id +
+          ", \"rejected\")'>" +
+          "REJECT" +
+          "</button>";
+
+      }else{
+
+        action =
+          "<span class='badge'>" +
+          escapeHtml(
+            payment.status
+          ) +
+          "</span>";
+
+      }
+
+      html +=
+        "<tr>" +
+
+        "<td>#"+
+        payment.id+
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          payment.username
+        ) +
+        "</td>" +
+
+        "<td>" +
+        Number(
+          payment.amount
+        ).toLocaleString() +
+        " MMK</td>" +
+
+        "<td>" +
+        escapeHtml(
+          payment.method
+        ) +
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          payment.transaction_id ||
+          "-"
+        ) +
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          payment.status
+        ) +
+        "</td>" +
+
+        "<td>" +
+        action +
+        "</td>" +
+
+        "</tr>";
+
+    }
+  );
+
+  $("adminPayments").innerHTML =
+    html ||
+    "<tr><td colspan='7'>No payments</td></tr>";
+}
+
+async function loadAdminOrders(){
+
+  const response =
+    await adminFetch(
+      "/api/admin/orders"
+    );
+
+  if(!response)
+    return;
+
+  const orders =
+    await response.json();
+
+  let html = "";
+
+  orders.forEach(
+    function(order){
+
+      let action = "";
+
+      if(
+        order.status !==
+        "completed"
+      ){
+
+        action =
+          "<button class='small-btn orange' " +
+          "onclick='updateOrder(" +
+          order.id +
+          ", \"processing\")'>" +
+          "PROCESSING" +
+          "</button>" +
+
+          "<button class='small-btn green' " +
+          "onclick='updateOrder(" +
+          order.id +
+          ", \"completed\")'>" +
+          "COMPLETE" +
+          "</button>" +
+
+          "<button class='small-btn red' " +
+          "onclick='updateOrder(" +
+          order.id +
+          ", \"cancelled\")'>" +
+          "CANCEL" +
+          "</button>";
+
+      }else{
+
+        action =
+          "<span class='badge'>COMPLETED</span>";
+
+      }
+
+      html +=
+        "<tr>" +
+
+        "<td>#"+
+        order.id+
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          order.username
+        ) +
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          order.game
+        ) +
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          order.name
+        ) +
+        "</td>" +
+
+        "<td>" +
+        escapeHtml(
+          order.player_id
+        ) +
+        "</td>" +
+
+        "<td>" +
+        Number(
+          order.total
+        ).toLocaleString() +
+        " MMK</td>" +
+
+        "<td>" +
+        escapeHtml(
+          order.status
+        ) +
+        "</td>" +
+
+        "<td>" +
+        action +
+        "</td>" +
+
+        "</tr>";
+
+    }
+  );
+
+  $("adminOrders").innerHTML =
+    html ||
+    "<tr><td colspan='8'>No orders</td></tr>";
+}
+
+async function updatePayment(
+  id,
+  status
+){
+
+  const ok =
+    confirm(
+      "Payment #" +
+      id +
+      " ကို " +
+      status +
+      " လုပ်မှာ သေချာပါသလား?"
+    );
+
+  if(!ok)
+    return;
+
+  const response =
+    await fetch(
+      "/api/admin/payments/" +
+      id,
+      {
+        method:"PATCH",
+
+        headers:{
+          "Content-Type":
+            "application/json",
+
+          Authorization:
+            "Bearer " + token
+        },
+
+        body:JSON.stringify({
+          status
+        })
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if(!response.ok){
+
+    alert(
+      data.error ||
+      "Payment update failed"
+    );
+
+    return;
+  }
+
+  await loadMe();
+
+  await loadAdmin();
+
+  alert(
+    "Payment updated successfully"
+  );
+}
+
+async function updateOrder(
+  id,
+  status
+){
+
+  const ok =
+    confirm(
+      "Order #" +
+      id +
+      " ကို " +
+      status +
+      " လုပ်မှာ သေချာပါသလား?"
+    );
+
+  if(!ok)
+    return;
+
+  const response =
+    await fetch(
+      "/api/admin/orders/" +
+      id,
+      {
+        method:"PATCH",
+
+        headers:{
+          "Content-Type":
+            "application/json",
+
+          Authorization:
+            "Bearer " + token
+        },
+
+        body:JSON.stringify({
+          status
+        })
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if(!response.ok){
+
+    alert(
+      data.error ||
+      "Order update failed"
+    );
+
+    return;
+  }
+
+  await loadAdmin();
+
+  alert(
+    "Order updated successfully"
+  );
+}
+
 function logout(){
 
   localStorage.removeItem(
@@ -2065,38 +3024,19 @@ function logout(){
 
   token = null;
 
+  currentUser = null;
+
   $("appPage")
+    .classList
+    .add("hidden");
+
+  $("adminNav")
     .classList
     .add("hidden");
 
   $("loginPage")
     .classList
     .remove("hidden");
-}
-
-function escapeHtml(value){
-
-  return String(value)
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
 }
 
 if(token){
@@ -2125,9 +3065,8 @@ app.use(
       err
     );
 
-    if(
-      res.headersSent
-    ) {
+    if(res.headersSent){
+
       return next(err);
     }
 
@@ -2139,7 +3078,7 @@ app.use(
 );
 
 /* =========================
-   START SERVER
+   START
 ========================= */
 
 app.listen(
@@ -2148,20 +3087,33 @@ app.listen(
   () => {
 
     console.log(
-      `Safe Zone Website running on port ${PORT}`
+      "================================"
     );
 
     console.log(
-      `Port: ${PORT}`
+      "Safe Zone Game Topup Started"
     );
 
     console.log(
-      `Telegram: ${
-        process.env.BOT_TOKEN &&
-        process.env.CHAT_ID
-          ? "enabled"
-          : "disabled"
-      }`
+      "Port:",
+      PORT
+    );
+
+    console.log(
+      "Admin:",
+      ADMIN_USERNAME
+    );
+
+    console.log(
+      "Telegram:",
+      process.env.BOT_TOKEN &&
+      process.env.CHAT_ID
+        ? "Enabled"
+        : "Disabled"
+    );
+
+    console.log(
+      "================================"
     );
 
   }
